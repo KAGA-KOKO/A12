@@ -13,3 +13,7 @@ config ZRAM
 	  disks and maybe many more.
 
 	  See zram.txt for more information.
+
+config ZRAM_SIZE_OVERRIDE
+	int "zram size to set from kernel"
+	default 4
