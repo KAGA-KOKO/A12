@@ -530,9 +530,13 @@ mext_check_arguments(struct inode *orig_inode,
 			orig_inode->i_ino, donor_inode->i_ino);
 		return -EINVAL;
 	}
-	if (orig_eof < orig_start + *len - 1)
+	if (orig_eof <= orig_start)
+		*len = 0;
+	else if (orig_eof < orig_start + *len - 1)
 		*len = orig_eof - orig_start;
-	if (donor_eof < donor_start + *len - 1)
+	if (donor_eof <= donor_start)
+		*len = 0;
+	else if (donor_eof < donor_start + *len - 1)
 		*len = donor_eof - donor_start;
 	if (!*len) {
 		ext4_debug("ext4 move extent: len should not be 0 "
@@ -606,6 +610,7 @@ ext4_move_extents(struct file *o_filp, struct file *d_filp, __u64 orig_blk,
 	 * Limitaion is only applicable for SW encryption but not for
 	 * inline encryption
 	 */
+#ifndef CONFIG_HIE
 	if (!fscrypt_is_hw_encrypt(orig_inode) ||
 	    !fscrypt_is_hw_encrypt(donor_inode)) {
 		if (ext4_encrypted_inode(orig_inode) ||
@@ -615,6 +620,7 @@ ext4_move_extents(struct file *o_filp, struct file *d_filp, __u64 orig_blk,
 			return -EOPNOTSUPP;
 		}
 	}
+#endif
 
 	/* Protect orig and donor inodes against a truncate */
 	lock_two_nondirectories(orig_inode, donor_inode);
