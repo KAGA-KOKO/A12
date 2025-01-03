@@ -44,10 +44,7 @@
 //yh@PSW.BSP.Storage.EXT4, 2018-11-26 add for ext4 async discard suppot
 #include "discard.h"
 #endif
-#ifdef CONFIG_OPLUS_FEATURE_EXT4_DEFRAG
-/* yanwu@TECH.Storage.FS.EXT4, 2020/02/29, support ext4 defrag */
-#include "e4defrag.h"
-#endif
+
 /*
  * The fourth extended filesystem constants/structures
  */
@@ -1564,10 +1561,6 @@ struct ext4_sb_info {
 	unsigned long last_time;	/* to store time in jiffies */
 	long interval_time;		/* to store thresholds */
 #endif
-#ifdef CONFIG_OPLUS_FEATURE_EXT4_DEFRAG
-/* yanwu@TECH.Storage.FS.EXT4, 2020/02/29, support ext4 defrag */
-	struct ext4_defrag_info dfi;
-#endif
 };
 
 static inline struct ext4_sb_info *EXT4_SB(struct super_block *sb)
@@ -2441,14 +2434,6 @@ extern void ext4_mark_bitmap_end(int start_bit, int end_bit, char *bitmap);
 extern int ext4_init_inode_table(struct super_block *sb,
 				 ext4_group_t group, int barrier);
 extern void ext4_end_bitmap_read(struct buffer_head *bh, int uptodate);
-#ifdef CONFIG_OPLUS_FEATURE_EXT4_DEFRAG
-/* yanwu@TECH.Storage.FS.EXT4, 2020/02/29, support ext4 defrag */
-extern bool
-ext4_query_inode_range(struct super_block * sb, unsigned long start,
-		       unsigned long end, bool(*match_fn) (struct inode *inode,
-							   void *priv),
-		       void *priv);
-#endif
 
 /* mballoc.c */
 extern const struct file_operations ext4_seq_mb_groups_fops;
@@ -2473,15 +2458,6 @@ extern int ext4_group_add_blocks(handle_t *handle, struct super_block *sb,
 				ext4_fsblk_t block, unsigned long count);
 extern int ext4_trim_fs(struct super_block *, struct fstrim_range *,
 				unsigned long blkdev_flags);
-#ifdef CONFIG_OPLUS_FEATURE_EXT4_DEFRAG
-/* yanwu@TECH.Storage.FS.EXT4, 2020/02/29, support ext4 defrag */
-extern bool
-ext4_mb_query_group_info(struct super_block * sb,
-			 ext4_group_t first_group, ext4_group_t nr_to_scan,
-			 bool(*match_fn) (struct ext4_group_info * grp,
-					  ext4_group_t group, void *priv),
-			 void *priv, bool reverse);
-#endif
 
 /* inode.c */
 int ext4_inode_is_fast_symlink(struct inode *inode);
@@ -3243,13 +3219,6 @@ extern int ext4_swap_extents(handle_t *handle, struct inode *inode1,
 				struct inode *inode2, ext4_lblk_t lblk1,
 			     ext4_lblk_t lblk2,  ext4_lblk_t count,
 			     int mark_unwritten,int *err);
-#ifdef CONFIG_OPLUS_FEATURE_EXT4_DEFRAG
-/* yanwu@TECH.Storage.FS.EXT4, 2020/02/29, support ext4 defrag */
-extern int ext4_query_extents_range(struct inode *inode, ext4_lblk_t block,
-				    ext4_lblk_t num,
-				    bool(*match_fn) (struct extent_status * es,
-						     void *priv), void *priv);
-#endif
 
 /* move_extent.c */
 extern void ext4_double_down_write_data_sem(struct inode *first,

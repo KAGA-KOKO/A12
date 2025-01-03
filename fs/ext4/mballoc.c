@@ -26,7 +26,6 @@
 #include <linux/log2.h>
 #include <linux/module.h>
 #include <linux/slab.h>
-#include <linux/nospec.h>
 #include <linux/backing-dev.h>
 #include <trace/events/ext4.h>
 
@@ -1480,25 +1479,10 @@ static void mb_free_blocks(struct inode *inode, struct ext4_buddy *e4b,
 	}
 
 	/* let's maintain fragments counter */
-#ifdef CONFIG_OPLUS_FEATURE_EXT4_DEFRAG
-/* yanwu@TECH.Storage.FS.EXT4, 2020/02/29, support ext4 defrag */
-	if (left_is_free && right_is_free)
-		e4b->bd_info->bb_fragments--;
-	else if (!left_is_free && !right_is_free) {
-		unsigned free, fragments;
-		e4b->bd_info->bb_fragments++;
-		free = e4b->bd_info->bb_free;
-		fragments = e4b->bd_info->bb_fragments;
-		if (need_defrag(e4b->bd_sb, free, fragments)) {
-			e4defrag_wake_up_thread(e4b->bd_sb);
-		}
-	}
-#else
 	if (left_is_free && right_is_free)
 		e4b->bd_info->bb_fragments--;
 	else if (!left_is_free && !right_is_free)
 		e4b->bd_info->bb_fragments++;
-#endif
 
 	/* buddy[0] == bd_bitmap is a special case, so handle
 	 * it right away and let mb_buddy_mark_free stay free of
@@ -1603,24 +1587,10 @@ static int mb_mark_used(struct ext4_buddy *e4b, struct ext4_free_extent *ex)
 		mlen = !mb_test_bit(start - 1, e4b->bd_bitmap);
 	if (start + len < EXT4_SB(e4b->bd_sb)->s_mb_maxs[0])
 		max = !mb_test_bit(start + len, e4b->bd_bitmap);
-#ifdef CONFIG_OPLUS_FEATURE_EXT4_DEFRAG
-/* yanwu@TECH.Storage.FS.EXT4, 2020/02/29, support ext4 defrag */
-	if (mlen && max) {
-		unsigned free, fragments;
-		e4b->bd_info->bb_fragments++;
-		free = e4b->bd_info->bb_free;
-		fragments = e4b->bd_info->bb_fragments;
-		if (need_defrag(e4b->bd_sb, free, fragments)) {
-			e4defrag_wake_up_thread(e4b->bd_sb);
-		}
-	} else if (!mlen && !max)
-		e4b->bd_info->bb_fragments--;
-#else
 	if (mlen && max)
 		e4b->bd_info->bb_fragments++;
 	else if (!mlen && !max)
 		e4b->bd_info->bb_fragments--;
-#endif
 
 	/* let's maintain buddy itself */
 	while (len) {
@@ -2174,8 +2144,7 @@ ext4_mb_regular_allocator(struct ext4_allocation_context *ac)
 		 * This should tell if fe_len is exactly power of 2
 		 */
 		if ((ac->ac_g_ex.fe_len & (~(1 << (i - 1)))) == 0)
-			ac->ac_2order = array_index_nospec(i - 1,
-							   sb->s_blocksize_bits + 2);
+			ac->ac_2order = i - 1;
 	}
 
 	/* if stream allocation is enabled, use global goal */
@@ -5526,101 +5495,5 @@ int ext4_trim_groups(struct super_block *sb,  struct discard_cmd_control *dcc,
 	}
 
 	return ret;
-}
-#endif
-
-#ifdef CONFIG_OPLUS_FEATURE_EXT4_FRAGMENT
-/* Iterate all the free extents in the group. */
-int
-ext4_mballoc_query_range(
-	struct super_block		*sb,
-	ext4_group_t			group,
-	ext4_grpblk_t			start,
-	ext4_grpblk_t			end,
-	ext4_mballoc_query_range_fn	formatter,
-	void				*priv)
-{
-	void				*bitmap;
-	ext4_grpblk_t			next;
-	struct ext4_buddy		e4b;
-	int				error;
-
-	error = ext4_mb_load_buddy(sb, group, &e4b);
-	if (error)
-		return error;
-	bitmap = e4b.bd_bitmap;
-
-	ext4_lock_group(sb, group);
-
-	start = (e4b.bd_info->bb_first_free > start) ?
-		e4b.bd_info->bb_first_free : start;
-	if (end >= EXT4_CLUSTERS_PER_GROUP(sb))
-		end = EXT4_CLUSTERS_PER_GROUP(sb) - 1;
-
-	while (start <= end) {
-		start = mb_find_next_zero_bit(bitmap, end + 1, start);
-		if (start > end)
-			break;
-		next = mb_find_next_bit(bitmap, end + 1, start);
-
-		ext4_unlock_group(sb, group);
-		error = formatter(sb, group, start, next - start, priv);
-		if (error)
-			goto out_unload;
-		ext4_lock_group(sb, group);
-
-		start = next + 1;
-	}
-
-	ext4_unlock_group(sb, group);
-out_unload:
-	ext4_mb_unload_buddy(&e4b);
-
-	return error;
-}
-#endif
-
-#ifdef CONFIG_OPLUS_FEATURE_EXT4_DEFRAG
-/* yanwu@TECH.Storage.FS.EXT4, 2020/02/29, support ext4 defrag */
-/**
- * ext4_mb_query_group_info() -- query the group info
- * @first_group: first block group to scan
- * @nr_ro_scan: number block groups to scan
- * @match_fn: matching function
- * @reverse: scan in reverse order if true
- * return true if we found a group matched, otherwise false
- */
-bool
-ext4_mb_query_group_info(struct super_block * sb,
-			 ext4_group_t first_group, ext4_group_t nr_to_scan,
-			 bool(*match_fn) (struct ext4_group_info * grp,
-					  ext4_group_t group, void *priv),
-			 void *priv, bool reverse)
-{
-	struct ext4_group_info *grp;
-	ext4_group_t n, group, ngroups;
-	bool found = false;
-
-	ngroups = ext4_get_groups_count(sb);
-	if (unlikely(first_group > ngroups))
-		first_group %= ngroups;
-	if (unlikely(nr_to_scan > ngroups))
-		nr_to_scan = ngroups;
-
-	for (n = 0; n < nr_to_scan; n++) {
-		group = reverse ? first_group - n : first_group + n;
-		if (group >= ngroups)
-			group = reverse ? group + ngroups : group - ngroups;
-		grp = ext4_get_group_info(sb, group);
-		/* We only do this if the grp has never been initialized */
-		if (unlikely(EXT4_MB_GRP_NEED_INIT(grp))) {
-			if (ext4_mb_init_group(sb, group, GFP_NOFS))
-				break;
-		}
-		found = match_fn(grp, group, priv);
-		if (found)
-			break;
-	}
-	return found;
 }
 #endif
